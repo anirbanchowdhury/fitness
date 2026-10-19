@@ -40,11 +40,12 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
 <nav role="tablist"><button data-tab="plan" class="on">Plan</button><button data-tab="log">Log</button><button data-tab="hist">History</button><button data-tab="prog">Progress</button></nav>
 <main>
 <section id="plan">
+ <div class="panel" id="next"></div>
  <div class="panel"><div class="toolbar"><label class="muted" for="wk">Week</label><select id="wk"></select><button class="primary" id="installBtn" hidden>Install app</button></div>
  <h2 id="wkTitle" style="margin-top:10px"></h2><p class="muted" id="wkFocus"></p>
  <div class="bar"><div id="wkBar"></div></div><div class="muted" id="wkText"></div></div>
  <div id="sessions"></div>
- <div class="notice"><b>Rules:</b> warm-up and cool-down stay at 5 min. If a session felt too hard or you missed reps, pick "Too hard" when you save and the plan lowers upcoming speeds by 0.3 km/h; "Too easy" raises them by 0.2. Stop if pain changes your stride.</div>
+ <div class="notice"><b>Weekly rhythm:</b> Mon tempo · Tue rest · Wed/Thu pull-ups · Fri rest · Sat VO2 max · Sun pull-ups. Keep at least 2 days between hard runs. Warm-up and cool-down stay at 5 min. Save a run as "Too hard" and upcoming speeds drop 0.3 km/h and the next session gets an extra rest day; "Too easy" raises them by 0.2. Stop if pain changes your stride.</div>
 </section>
 <section id="log" hidden>
  <div class="panel"><h2>Record a session</h2>
@@ -66,8 +67,8 @@ button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visi
 </main>
 <script>
 const GOAL=11.8,N=20,KEY='run28_pull20_v2',$=s=>document.querySelector(s),r1=x=>Math.round(x*10)/10;
-const PH=[['Base',5,4,1],['Build',4,6,1.5],['Strength',3,8,2],['Race pace',2,12,2]];
-const FOCUS=['Base: short repeats at a speed you can hold. Build volume, not hero speed.','Build: fewer, longer repeats. Keep recoveries honest.','Strength: long reps at controlled-hard effort. Even splits beat fast starts.','Race pace: practise the pace you need on race day.'];
+const FOCUS=['Month 1: 2 VO2 worksets. Learn a hard but repeatable effort.','Month 2: 3 VO2 worksets. Keep every 4-min rep at the same speed.','Month 3: the full 4 worksets. Hold form on the last rep.','Month 4: hold 4 worksets while speed rises. Tempo rehearses race pace.','Month 5: sharpen for the 5.5 km goal attempt in week 20.'];
+const CYC=['tempo','pu2','vo2','pu1'],GAP={tempo:2,pu2:2,vo2:1,pu1:1},NAME={tempo:'Tempo run',pu2:'Pull-ups (Wed/Thu)',vo2:'VO2 max run',pu1:'Pull-ups (Sun)'};
 const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
 const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const mmss=m=>{const s=Math.round(m*60);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
@@ -79,31 +80,36 @@ const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('
 const sp=w=>Math.min(12.5,Math.max(7,r1(S.v0+(GOAL-S.v0)*w/(N-1)+S.off)));
 function curMax(){const l=Object.values(S.logs).filter(x=>x.kind==='pu'&&x.max).sort((a,b)=>a.date<b.date?-1:1);return l.length?+l.at(-1).max:+S.pu0}
 function runs(w){
- const [pn,reps,work,rec]=PH[Math.floor(w/5)],test=w%5===4,v=sp(w);
- const iv=test?{reps:3,work:3,rec:1}:{reps,work,rec},A=10+iv.reps*(iv.work+iv.rec);
- const e=r1(v-1.3),X=Math.min(40,20+w),T=Math.min(20,10+Math.round(w*.6)),tv=w===N-1?GOAL:v;
- const out=[
- {id:`w${w}-0`,kind:'run',tag:'Intervals',title:`${iv.reps} × ${iv.work} min intervals${test?' (light)':''}`,mins:A,
-  steps:[`Warm-up 5 min @ ${r1(v-1.8)} km/h`,`${iv.reps} × ${iv.work} min @ ${v} km/h, incline 1.5%`,`${iv.rec} min recovery @ ${r1(v-.6)} km/h between reps`,'Cool-down 5 min easy'],
-  plan:{warm:'5 min',spd:v,rec:r1(v-.6),reps:iv.reps,inc:1.5,dur:A}},
- {id:`w${w}-1`,kind:'run',tag:'Easy',title:`Easy run, ${X} min`,mins:X+10,
-  steps:['Warm-up 5 min walk/jog',`${X} min @ ${e} km/h, incline 1%, conversational`,'Cool-down 5 min easy'],
-  plan:{warm:'5 min',spd:e,reps:1,inc:1,dur:X+10}},
- test?{id:`w${w}-2`,kind:'run',tag:'5.5 km test',title:`5.5 km checkpoint${w===N-1?': goal attempt':''}`,mins:10+Math.round(330/tv),
-  steps:['Warm-up 5 min easy',`5.5 km @ ~${tv} km/h, incline 1%. Target ${mmss(330/tv)}`,'Cool-down 5 min easy'],
-  plan:{warm:'5 min',spd:tv,reps:1,inc:1,dist:5.5,dur:10+Math.round(330/tv)}}
- :{id:`w${w}-2`,kind:'run',tag:'Tempo',title:`${T} min tempo`,mins:T+10,
-  steps:['Warm-up 5 min easy',`${T} min continuous @ ${r1(v-.3)} km/h, incline 1%. Controlled-hard (RPE 6–7)`,'Cool-down 5 min easy'],
-  plan:{warm:'5 min',spd:r1(v-.3),reps:1,inc:1,dur:T+10}}];
- return out}
+ const test=w%5===4,v=sp(w),n=test?2:[2,3,4][Math.min(2,Math.floor(w/4))],T=Math.min(20,10+Math.round(w*.6)),tv=w===N-1?GOAL:v,rc=r1(v-2),M=7+7*n;
+ const vo2={id:`w${w}-0`,kind:'run',slot:'vo2',day:'Sat',tag:'VO2 max',title:`VO2 max: ${n} × 4 min${test?' (light)':''}`,mins:M,
+  steps:['Warm-up 5 min easy',`${n} worksets: 4 min @ ${v} km/h (hard, RPE 8–9, incline 1.5%), then 3 min recovery @ ${rc} km/h`,'Skip the recovery after the last workset and go straight to the cool-down','Cool-down 5 min easy'],
+  plan:{warm:'5 min',spd:v,rec:rc,reps:n,inc:1.5,dur:M}};
+ const tmp=test?{id:`w${w}-2`,kind:'run',slot:'tempo',day:'Mon',tag:'5.5 km test',title:`5.5 km checkpoint${w===N-1?': goal attempt':''}`,mins:10+Math.round(330/tv),
+  steps:['Warm-up 5 min easy',`5.5 km @ ~${tv} km/h, incline 1%. Target ${mmss(330/tv)}`,'Cool-down 5 min easy'],plan:{warm:'5 min',spd:tv,reps:1,inc:1,dist:5.5,dur:10+Math.round(330/tv)}}
+ :{id:`w${w}-2`,kind:'run',slot:'tempo',day:'Mon',tag:'Tempo',title:`${T} min tempo`,mins:T+10,
+  steps:['Warm-up 5 min easy',`${T} min continuous @ ${r1(v-.6)} km/h, incline 1%. Controlled-hard (RPE 6–7)`,'Cool-down 5 min easy'],plan:{warm:'5 min',spd:r1(v-.6),reps:1,inc:1,dur:T+10}};
+ return [vo2,tmp]}
 function pulls(w){
- const m=curMax(),test=w%5===4,tgt=Math.min(20,Math.round(S.pu0+(20-S.pu0)*(w+1)/N)),k=Math.max(2,Math.round(m*.5));
+ const m=curMax(),test=w%5===4,tgt=Math.min(20,Math.round(S.pu0+(20-S.pu0)*(w+1)/N)),k=Math.max(2,Math.round(m*.5)),h=Math.max(2,Math.round(m*.6));
  const vol=m<3?{t:'5 × 3 slow negatives',s:['Jump or step to the top, lower over 5 sec','5 sets of 3, rest 2 min'],p:'3,3,3,3,3'}
   :test?{t:'Light volume',s:[`3 sets of ${k} strict reps`,'Rest 2 min. Stay fresh for the test'],p:`${k},${k},${k}`}
-  :{t:`Volume: 5 × ${Math.max(2,Math.round(m*.6))}`,s:[`5 sets of ${Math.max(2,Math.round(m*.6))} strict reps, rest 2 min`,'Add 1 rep to every set when all 5 sets feel smooth'],p:Array(5).fill(Math.max(2,Math.round(m*.6))).join()};
+  :{t:`Volume: 5 × ${h}`,s:[`5 sets of ${h} strict reps, rest 2 min`,'Add 1 rep to every set when all 5 sets feel smooth'],p:Array(5).fill(h).join()};
  const b=test?{t:`Max test (target ${tgt}+)`,s:['Warm up with 2 easy sets of 2','One all-out strict set, full hang to chin over bar','Log the number as "Max strict reps"'],p:''}
   :{t:`Ladders up to ${k}`,s:[`Ladder 1, 2 … ${k} reps (rest = reps × 10 sec)`,'Do 2 ladders, strict form, no kipping',`Week target max: ${tgt}`],p:''};
- return [{id:`w${w}-3`,kind:'pu',tag:'Pull-ups',title:vol.t,mins:15,steps:vol.s,plan:{sets:vol.p,dur:15}},{id:`w${w}-4`,kind:'pu',tag:'Pull-ups',title:b.t,mins:15,steps:b.s,plan:{sets:b.p,dur:15}}]}
+ return [{id:`w${w}-3`,kind:'pu',slot:'pu1',day:'Sun',tag:'Pull-ups',title:vol.t,mins:15,steps:vol.s,plan:{sets:vol.p,dur:15}},{id:`w${w}-4`,kind:'pu',slot:'pu2',day:'Wed/Thu',tag:'Pull-ups',title:b.t,mins:15,steps:b.s,plan:{sets:b.p,dur:15}}]}
+const week=w=>{const [v,t]=runs(w),[a,b]=pulls(w);return [t,b,v,a]};
+const slotOf=(id,l)=>{const m=/^w\d+-(\d)$/.exec(id);return m?{0:'vo2',1:'tempo',2:'tempo',3:'pu1',4:'pu2'}[m[1]]:(l.kind==='run'?'tempo':'pu1')};
+const addDays=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
+const fmtD=d=>new Date(d+'T00:00:00Z').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
+function renderNext(){
+ const el=$('#next'),e=Object.entries(S.logs).sort((a,b)=>a[1].date<b[1].date?1:a[1].date>b[1].date?-1:0);
+ if(!e.length){el.innerHTML='<h2>Next up</h2><p class="muted">Log a session and the plan will suggest what to do next.</p>';return}
+ const [id,l]=e[0],sl=slotOf(id,l),nx=CYC[(CYC.indexOf(sl)+1)%4],hard=+l.effort>=9||l.feel==='hard';
+ const gap=GAP[sl]+(l.kind==='run'&&hard?1:0),earliest=addDays(l.date,gap),t=today(),when=earliest>t?earliest:t;
+ let w=Math.min(N-1,Math.max(0,Math.floor((new Date(when)-new Date(S.start))/6048e5))),s=null;
+ for(let i=w;i<N&&!s;i++){s=week(i).find(x=>x.slot===nx&&!S.logs[x.id]);if(s)w=i}
+ if(!s){el.innerHTML='<h2>Next up</h2><p>All planned sessions are logged. Nice work.</p>';return}
+ el.innerHTML=`<h2>Next up: ${NAME[nx]}</h2><p style="margin:0 0 6px"><b>${esc(s.title)}</b> · Week ${w+1}</p><p class="muted" style="margin:0 0 8px">Last session: ${esc(l.title)}, ${fmtD(l.date)}. ${earliest>t?`Rest until ${fmtD(earliest)}, which gives ${gap} day${gap>1?'s':''} before the next one.`:'You are clear to train today.'}${hard&&l.kind==='run'?' An extra rest day was added because that run felt hard.':''} Usual day: ${s.day}.</p><button class="primary" data-open="${s.id}" data-w="${w}">Open session</button>`}
 function form(id,kind,title,p,L){
  const v=k=>esc((L&&L[k]!=null?L[k]:p[k]));
  const f=(lab,k,t='text',ex='')=>`<div class="field"><label>${lab}</label><input data-k="${k}" type="${t}" ${ex} value="${v(k)}"></div>`;
@@ -115,24 +121,24 @@ function form(id,kind,title,p,L){
  <textarea data-k="notes" placeholder="Journal: breathing, legs, form, pace changes, anything to adjust next time">${esc(L?.notes)}</textarea>
  <div class="toolbar"><button class="primary" data-save>Save session</button><span class="muted"></span></div></div>`}
 function card(s){const L=S.logs[s.id];
- return `<details class="card ${L?'done':''}"><summary><div><div class="muted">${s.kind==='run'?'Run':'Pull-ups'} · ~${s.mins} min</div><b>${s.title}</b></div><span class="tag ${s.kind==='pu'?'pu':''}">${s.tag}</span>${L?'<span class="ok">✓</span>':''}</summary><ol class="steps">${s.steps.map(x=>`<li>${x}</li>`).join('')}</ol>${form(s.id,s.kind,s.title,{date:today(),...s.plan},L)}</details>`}
+ return `<details class="card ${L?'done':''}" data-sid="${s.id}"><summary><div><div class="muted">${s.day} · ${s.kind==='run'?'Run':'Pull-ups'} · ~${s.mins} min</div><b>${s.title}</b></div><span class="tag ${s.kind==='pu'?'pu':''}">${s.tag}</span>${L?'<span class="ok">✓</span>':''}</summary><ol class="steps">${s.steps.map(x=>`<li>${x}</li>`).join('')}</ol>${form(s.id,s.kind,s.title,{date:today(),...s.plan},L)}</details>`}
 function curWeek(){const d=(new Date(today())-new Date(S.start))/6048e5;return Math.min(N-1,Math.max(0,Math.floor(d)))}
 let cur=curWeek(),lk='run',lid=null;
 function render(){
  const wk=$('#wk');if(!wk.options.length)for(let i=0;i<N;i++)wk.add(new Option(`Week ${i+1}`,i));wk.value=cur;
- const ss=[...runs(cur),...pulls(cur)],done=ss.filter(s=>S.logs[s.id]).length;
- $('#wkTitle').textContent=`Week ${cur+1} of ${N} · ${PH[Math.floor(cur/5)][0]}${cur%5===4?' + test':''}`;
- $('#wkFocus').textContent=FOCUS[Math.floor(cur/5)]+(cur%5===4?' Test week: lighter training, then measure.':'');
- $('#wkBar').style.width=done/ss.length*100+'%';$('#wkText').textContent=`${done} of ${ss.length} sessions logged. Target interval speed this week: ${sp(cur)} km/h`;
+ const ss=week(cur),done=ss.filter(s=>S.logs[s.id]).length;
+ $('#wkTitle').textContent=`Week ${cur+1} of ${N} · Month ${Math.floor(cur/4)+1}${cur%5===4?' · test week':''}`;
+ $('#wkFocus').textContent=FOCUS[Math.min(4,Math.floor(cur/4))]+(cur%5===4?' Test week: lighter training, then measure.':'');
+ $('#wkBar').style.width=done/ss.length*100+'%';$('#wkText').textContent=`${done} of ${ss.length} sessions logged. VO2 max speed this week: ${sp(cur)} km/h`;
  $('#sessions').innerHTML=ss.map(card).join('');
  const all=Object.values(S.logs),sp0=all.filter(x=>x.kind==='run'&&+x.spd).map(x=>+x.spd);
  $('#mRun').textContent=sp0.length?Math.max(...sp0)+' km/h':'–';$('#mPu').textContent=curMax()+' / 20';
  const byDate=(k,f)=>all.filter(x=>x.kind===k&&+x[f]).sort((a,b)=>a.date<b.date?-1:1).map(x=>+x[f]);
  $('#cRun').innerHTML=chart(byDate('run','spd'),GOAL,7,12.5);$('#cPu').innerHTML=chart(byDate('pu','max'),20,0,22);
  $('#logs').innerHTML=Object.entries(S.logs).sort((a,b)=>a[1].date<b[1].date?1:-1).map(([id,l])=>`<div class="log"><b>${esc(l.title)}</b><span class="muted">${esc(l.date)} · ${esc(l.dur||'?')} min${l.kind==='run'?` · ${esc(l.reps||'?')} reps @ ${esc(l.spd||'?')} km/h, rec ${esc(l.rec||'–')}, incline ${esc(l.inc||'–')}%${l.dist?`, ${esc(l.dist)} km`:''}`:` · sets ${esc(l.sets||'–')}, max ${esc(l.max||'–')}`}${l.effort?` · effort ${esc(l.effort)}/10`:''}${l.hr?` · HR ${esc(l.hr)}`:''}</span>${l.notes?`<p style="margin:4px 0">${esc(l.notes)}</p>`:''}<button class="muted" data-del="${id}">Delete</button></div>`).join('')||'<p class="muted">No sessions yet.</p>';
- $('#start').value=S.start;$('#pu0').value=S.pu0;$('#v0').value=S.v0;renderLog()}
+ $('#start').value=S.start;$('#pu0').value=S.pu0;$('#v0').value=S.v0;renderNext();renderLog()}
 function renderLog(){
- const ss=[...runs(cur),...pulls(cur)].filter(x=>x.kind===lk),pk=$('#lpick'),prev=pk.value;
+ const ss=week(cur).filter(x=>x.kind===lk),pk=$('#lpick'),prev=pk.value;
  pk.innerHTML='<option value="">Extra session (not in the plan)</option>'+ss.map(x=>`<option value="${x.id}">Week ${cur+1}: ${esc(x.title)}${S.logs[x.id]?' (logged)':''}</option>`).join('');
  pk.value=ss.some(x=>x.id===prev)?prev:'';
  const pl=ss.find(x=>x.id===pk.value),last=Object.values(S.logs).filter(x=>x.kind===lk).sort((a,b)=>a.date<b.date?1:-1)[0];
@@ -148,6 +154,7 @@ function chart(pts,goal,lo,hi){
 const ADJ={easy:.2,ok:0,hard:-.3};
 document.addEventListener('click',e=>{
  const t=e.target;
+ if(t.dataset.open){cur=+t.dataset.w;render();const d=document.querySelector(`[data-sid="${t.dataset.open}"]`);if(d){d.open=true;d.scrollIntoView({behavior:'smooth'})}return}
  if(t.dataset.lk){lk=t.dataset.lk;document.querySelectorAll('[data-lk]').forEach(b=>b.classList.toggle('on',b===t));$('#lmsg').textContent='';renderLog();return}
  if(t.dataset.tab){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b===t));['plan','log','hist','prog'].forEach(id=>$('#'+id).hidden=id!==t.dataset.tab);return}
  if(t.dataset.del){if(confirm('Delete this session log?')){const l=S.logs[t.dataset.del];if(l?.kind==='run')S.off=r1(S.off-(ADJ[l.feel]||0));delete S.logs[t.dataset.del];save();render()}return}
