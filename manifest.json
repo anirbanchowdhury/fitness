@@ -1,0 +1,15 @@
+{
+  "name": "Run 28 + Pull-up 20 Tracker",
+  "short_name": "Run28 Pull20",
+  "description": "Progressive plan and session journal for a sub-28 5.5 km run and 20 continuous pull-ups.",
+  "id": "./index.html",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f4ee",
+  "theme_color": "#15251f",
+  "icons": [
+    {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable"}
+  ]
+}
