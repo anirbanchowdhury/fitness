@@ -115,6 +115,17 @@ const slotOf=(id,l)=>{const m=/^w\d+-(\d)$/.exec(id);return m?{0:'vo2',1:'tempo'
 const slotLabel=id=>{const m=/^w(\d+)-(\d)$/.exec(id);return m?`Week ${+m[1]+1} · ${NAME[slotOf(id,{})]}`:'Extra session'};
 const addDays=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
 const fmtD=d=>new Date(d+'T00:00:00Z').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
+/* Pre-fill an unlogged session with what you actually did last time in the same slot.
+   Test weeks (every 5th week) are special, so they neither receive nor provide a blueprint. */
+const isTest=id=>{const m=/^w(\d+)-/.exec(id);return !!m&&+m[1]%5===4};
+function prefill(s){
+ if(isTest(s.id))return null;
+ const e=Object.entries(S.logs).filter(([id,l])=>id!==s.id&&/^w\d+-\d$/.test(id)&&!isTest(id)&&l.kind===s.kind&&slotOf(id,l)===s.slot)
+  .sort((a,b)=>a[1].date<b[1].date?1:a[1].date>b[1].date?-1:(b[1].u||0)-(a[1].u||0));
+ if(!e.length)return null;
+ const [id,l]=e[0],v={};
+ for(const k of Object.keys(l))if(!['date','title','u','kind'].includes(k)&&l[k]!==undefined&&l[k]!=='')v[k]=l[k];
+ return{v,hint:`Copied from your last one: ${slotLabel(id)}, ${fmtD(l.date)}, including effort, feel and notes. Update whatever differed this time.`}}
 const weekOf=d=>Math.min(N-1,Math.max(0,Math.floor((new Date(d)-new Date(S.start))/6048e5)));
 function renderNext(){
  const el=$('#next'),e=Object.entries(S.logs).sort((a,b)=>a[1].date<b[1].date?1:a[1].date>b[1].date?-1:0);
@@ -125,18 +136,18 @@ function renderNext(){
  for(let i=w;i<N&&!s;i++){s=week(i).find(x=>x.slot===nx&&!S.logs[x.id]);if(s)w=i}
  if(!s){el.innerHTML='<h2>Next up</h2><p>All planned sessions are logged. Nice work.</p>';return}
  el.innerHTML=`<h2>Next up: ${NAME[nx]}</h2><p style="margin:0 0 6px"><b>${esc(s.title)}</b> · Week ${w+1}</p><p class="muted" style="margin:0 0 8px">Last session: ${esc(l.title)}, ${fmtD(l.date)}. ${earliest>t?`Rest until ${fmtD(earliest)}, which gives ${gap} day${gap>1?'s':''} before the next one.`:'You are clear to train today.'}${hard&&l.kind==='run'?' An extra rest day was added because that run felt hard.':''} Usual day: ${s.day}.</p><button class="primary" data-open="${s.id}" data-w="${w}">Open session</button>`}
-function form(id,kind,title,p,L){
- const v=k=>esc((L&&L[k]!=null?L[k]:p[k]));
+function form(id,kind,title,p,L,hint=''){
+ const v0=k=>L&&L[k]!=null?L[k]:p[k],v=k=>esc(v0(k));
  const f=(lab,k,t='text',ex='')=>`<div class="field"><label>${lab}</label><input data-k="${k}" type="${t}" ${ex} value="${v(k)}"></div>`;
- const sel=(lab,k,arr)=>`<div class="field"><label>${lab}</label><select data-k="${k}"><option value="">Choose…</option>${arr.map(([a,b])=>`<option value="${a}" ${String(L?.[k]??'')===String(a)?'selected':''}>${b}</option>`).join('')}</select></div>`;
+ const sel=(lab,k,arr)=>`<div class="field"><label>${lab}</label><select data-k="${k}"><option value="">Choose…</option>${arr.map(([a,b])=>`<option value="${a}" ${String(v0(k)??'')===String(a)?'selected':''}>${b}</option>`).join('')}</select></div>`;
  const run=f('Warm-up','warm')+f('Work speed (km/h)','spd','number','step="0.1"')+f('Recovery speed (km/h)','rec','number','step="0.1"')+f('Reps done','reps','number')+f('Incline %','inc','number','step="0.5"')+f('Distance km (optional)','dist','number','step="0.01"');
  const pu=f('Reps per set, e.g. 5,5,4,4','sets')+f('Max strict reps in one set','max','number');
  const eff=Array.from({length:10},(_,i)=>[i+1,`${i+1}/10`]);
- return `<div class="journal" data-id="${id}" data-kind="${kind}" data-title="${esc(title)}"><div class="grid">${f('Date','date','date')}${f('Total minutes','dur','number')}${kind==='run'?run:pu}${f('Avg / max HR (optional)','hr')}${sel('Effort','effort',eff)}${kind==='run'?sel('How did it feel?','feel',[['easy','Too easy'],['ok','Just right'],['hard','Too hard']]):''}</div>
- <textarea data-k="notes" placeholder="Journal: breathing, legs, form, pace changes, anything to adjust next time">${esc(L?.notes)}</textarea>
+ return `<div class="journal" data-id="${id}" data-kind="${kind}" data-title="${esc(title)}">${hint?`<p class="muted" style="margin:0 0 8px">${hint}</p>`:''}<div class="grid">${f('Date','date','date')}${f('Total minutes','dur','number')}${kind==='run'?run:pu}${f('Avg / max HR (optional)','hr')}${sel('Effort','effort',eff)}${kind==='run'?sel('How did it feel?','feel',[['easy','Too easy'],['ok','Just right'],['hard','Too hard']]):''}</div>
+ <textarea data-k="notes" placeholder="Journal: breathing, legs, form, pace changes, anything to adjust next time">${v('notes')}</textarea>
  <div class="toolbar"><button class="primary" data-save>Save session</button>${L?`<button class="danger" data-del="${id}">Clear log</button>`:''}<span class="muted"></span></div></div>`}
 function card(s){const L=S.logs[s.id];
- return `<details class="card ${L?'done':''}" data-sid="${s.id}"><summary><div><div class="muted">${s.day} · ${s.kind==='run'?'Run':'Pull-ups'} · ~${s.mins} min</div><b>${s.title}</b></div><span class="tag ${s.kind==='pu'?'pu':''}">${s.tag}</span>${L?'<span class="ok">✓</span>':''}</summary><ol class="steps">${s.steps.map(x=>`<li>${x}</li>`).join('')}</ol>${form(s.id,s.kind,s.title,{date:today(),...s.plan},L)}</details>`}
+ return `<details class="card ${L?'done':''}" data-sid="${s.id}"><summary><div><div class="muted">${s.day} · ${s.kind==='run'?'Run':'Pull-ups'} · ~${s.mins} min</div><b>${s.title}</b></div><span class="tag ${s.kind==='pu'?'pu':''}">${s.tag}</span>${L?'<span class="ok">✓</span>':''}</summary><ol class="steps">${s.steps.map(x=>`<li>${x}</li>`).join('')}</ol>${(()=>{const pf=L?null:prefill(s);return form(s.id,s.kind,s.title,{date:today(),...s.plan,...(pf?pf.v:{})},L,pf?pf.hint:'')})()}</details>`}
 function curWeek(){const d=(new Date(today())-new Date(S.start))/6048e5;return Math.min(N-1,Math.max(0,Math.floor(d)))}
 let cur=curWeek(),lk='run',lid=null;
 function histRow([id,l]){
@@ -162,8 +173,8 @@ function renderLog(){
  pk.value=ss.some(x=>x.id===prev)?prev:'';
  const pl=ss.find(x=>x.id===pk.value),last=Object.values(S.logs).filter(x=>x.kind===lk).sort((a,b)=>a.date<b.date?1:-1)[0];
  if(!pl&&!lid)lid='x'+Date.now();
- const id=pl?pl.id:lid,p=pl?pl.plan:last?{warm:last.warm,spd:last.spd,rec:last.rec,reps:last.reps,inc:last.inc,dur:last.dur,sets:last.sets}:{};
- $('#lform').innerHTML=`<div class="card">${form(id,lk,pl?pl.title:(lk==='run'?'Extra run':'Extra pull-ups'),{date:today(),...p},S.logs[id])}</div>`}
+ const id=pl?pl.id:lid,pf=pl&&!S.logs[pl.id]?prefill(pl):null,p=pl?{...pl.plan,...(pf?pf.v:{})}:last?{warm:last.warm,spd:last.spd,rec:last.rec,reps:last.reps,inc:last.inc,dur:last.dur,sets:last.sets}:{};
+ $('#lform').innerHTML=`<div class="card">${form(id,lk,pl?pl.title:(lk==='run'?'Extra run':'Extra pull-ups'),{date:today(),...p},S.logs[id],pf?pf.hint:'')}</div>`}
 $('#lpick').onchange=renderLog;
 
 function chart(pts,goal,lo,hi){
